@@ -3,6 +3,10 @@
 #include <unistd.h>
 #include <sys/resource.h>
 
+#ifdef RLIMIT_NPROC
+#define HAVE_NPROC 1
+#endif
+
 extern char **environ;
 
 int main(int argc, char *argv[]) {
@@ -32,14 +36,22 @@ int main(int argc, char *argv[]) {
             break;
         // размер файла
         case 'u':
+#ifdef HAVE_NPROC
             getrlimit(RLIMIT_NPROC, &lim);
             printf("ulimit=%llu\n", (unsigned long long)lim.rlim_cur);
+#else
+            printf("ulimit=%ld\n", sysconf(_SC_CHILD_MAX));  /* макс. число процессов */
+#endif
             break;
         // изменение
         case 'U':
+#ifdef HAVE_NPROC
             getrlimit(RLIMIT_NPROC, &lim);
             lim.rlim_cur = lim.rlim_max = atol(opt_ar[i]);
             setrlimit(RLIMIT_NPROC, &lim);
+#else
+            fprintf(stderr, "changing process limit is not supported here\n");
+#endif
             break;
         // размер файла создаваемого при падении
         case 'c':
