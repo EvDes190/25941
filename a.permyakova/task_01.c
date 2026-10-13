@@ -5,8 +5,7 @@
 
 extern char **environ;
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     char  opt_ch[64]; // символы опций
     char *opt_ar[64]; // аргументы опций 
     int   n = 0;
@@ -33,14 +32,14 @@ int main(int argc, char *argv[])
             break;
         // размер файла
         case 'u':
-            getrlimit(RLIMIT_FSIZE, &lim);
+            getrlimit(RLIMIT_NPROC, &lim);
             printf("ulimit=%llu\n", (unsigned long long)lim.rlim_cur);
             break;
         // изменение
         case 'U':
-            getrlimit(RLIMIT_FSIZE, &lim);
+            getrlimit(RLIMIT_NPROC, &lim);
             lim.rlim_cur = lim.rlim_max = atol(opt_ar[i]);
-            setrlimit(RLIMIT_FSIZE, &lim);
+            setrlimit(RLIMIT_NPROC, &lim);
             break;
         // размер файла создаваемого при падении
         case 'c':
@@ -58,7 +57,7 @@ int main(int argc, char *argv[])
 	    printf("cwd=%s\n", getcwd(buf, sizeof buf) ? buf : "(error)");
             break;
         case 'v':
-            while (*environ) printf("%s\n", *environ++);
+            for (char **e = environ; *e; e++) printf("%s\n", *e);
             break;
         case 'V':
             putenv(opt_ar[i]);

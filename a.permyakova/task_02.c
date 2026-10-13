@@ -2,16 +2,13 @@
 #include <time.h>
 #include <stdlib.h>
 
-int main() {
-    setenv("TZ", "America/Los_Angeles", 1);
-    tzset();
+int main(void) {
+    time_t t = time(NULL) - 8 * 3600;
+    struct tm *lt = gmtime(&t);
 
-    time_t t = time(NULL);
-    struct tm *localt = localtime(&t);
+    char buf[64];
+    strftime(buf, sizeof buf, "%a %b %d %H:%M:%S %Y PST", lt);
+    printf("%s\n", buf);
 
-    char buf[30];
-    strftime(buf, sizeof buf, "%Y-%m-%d %H:%M:%S %Z", localt);
-
-    printf("time in California: %s\n", buf);
     return 0;
 }
