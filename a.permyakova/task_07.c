@@ -1,72 +1,104 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <unistd.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 static volatile sig_atomic_t expired = 0;
 
-void on_timer(int sig)
-{
+static void on_timer(int sig) {
     (void)sig;
     expired = 1;
 }
 
-int main(void)
-{
-    off_t line_start[1000];   /* где начинается каждая строка */
-    int line_len[1000];       /* длина каждой строки без '\n' */
-    int total = 0, num;
-    off_t begin = 0;
-    struct stat st;
+static void sanitize(char *s) {
+    char *start = s, *w = s;
 
-    int file = open("file.txt", O_RDONLY);
-    if (file == -1) {
+    while (*s) {
+        if (*s == 27) {
+            s++;
+            if (*s == '[' || *s == 'O') {
+                s++;
+                while (*s && !isalpha((unsigned char)*s) && *s != '~')
+                    s++;
+                if (*s)
+                    s++;
+            }
+        } else if (*s == 8 || *s == 127) {
+            if (w > start)
+                w--;
+            s++;
+        } else if (iscntrl((unsigned char)*s) && *s != '\n') {
+            s++;
+        } else {
+            *w++ = *s++;
+        }
+    }
+    *w = '\0';
+}
+
+int main(void) {
+    int fd = open("file.txt", O_RDONLY);
+    if (fd == -1) {
         perror("open");
         return 1;
     }
 
-    if (fstat(file, &st) == -1) {
+    struct stat st;
+    if (fstat(fd, &st) == -1) {
         perror("fstat");
-        return 1;
-    }
-    off_t size = st.st_size;
-    if (size == 0) {          /* пустой файл: mmap с нулевой длиной не работает */
-        close(file);
-        return 0;
-    }
-
-    /* отображаем файл в память: теперь он доступен как массив map[] */
-    char *map = mmap(NULL, size, PROT_READ, MAP_PRIVATE, file, 0);
-    if (map == MAP_FAILED) {
-        perror("mmap");
+        close(fd);
         return 1;
     }
 
-    /* строим таблицу: на каждом '\n' записываем начало и длину строки */
-    for (off_t i = 0; i < size && total < 1000; i++) {
-        if (map[i] == '\n') {
-            line_start[total] = begin;
-            line_len[total] = i - begin;
-            total++;
-            begin = i + 1;
+    size_t size = st.st_size;
+    char *data = NULL;
+
+    if (size > 0) {
+        data = mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+        if (data == MAP_FAILED) {
+            perror("mmap");
+            close(fd);
+            return 1;
         }
     }
 
-    /* последняя строка без '\n' в конце файла */
-    if (begin < size && total < 1000) {
-        line_start[total] = begin;
-        line_len[total] = size - begin;
-        total++;
+    // таблица 
+    size_t *offset = NULL, *length = NULL;
+    size_t count = 0, cap = 0, start = 0;
+
+    for (size_t i = 0; i <= size; i++) {
+        int end_of_line = (i < size && data[i] == '\n');
+        int end_of_file = (i == size && start < size);
+
+        if (!end_of_line && !end_of_file)
+            continue;
+
+        if (count == cap) {
+            cap = cap ? cap * 2 : 16;
+            size_t *o = realloc(offset, cap * sizeof(size_t));
+            size_t *l = realloc(length, cap * sizeof(size_t));
+            if (o) offset = o;
+            if (l) length = l;
+            if (o == NULL || l == NULL) {
+                perror("realloc");
+                return 1;
+            }
+        }
+        offset[count] = start;
+        length[count++] = i - start;
+        start = i + 1;
     }
 
-    /* обработчик без SA_RESTART, чтобы alarm прерывал scanf */
-    struct sigaction act;
+    struct sigaction act = {0};
     act.sa_handler = on_timer;
-    sigemptyset(&act.sa_mask);
-    act.sa_flags = 0;
     sigaction(SIGALRM, &act, NULL);
+
+    char *input = NULL;
+    size_t input_cap = 0;
 
     while (1) {
         printf("Enter line number (5 sec, 0 - exit): ");
@@ -74,32 +106,46 @@ int main(void)
 
         expired = 0;
         alarm(5);
-        int res = scanf("%d", &num);
+        ssize_t res = getline(&input, &input_cap, stdin);
         alarm(0);
 
-        if (expired) {                       /* не успел: печатаем весь файл */
+        if (expired) {
             printf("\n");
-            fwrite(map, 1, size, stdout);
+            if (size > 0)
+                fwrite(data, 1, size, stdout);
             break;
         }
-        if (res == EOF || (res == 1 && num == 0))
+        if (res == -1)
             break;
-        if (res != 1) {                      /* ввели не число: сбросить строку */
-            int ch;
-            while ((ch = getchar()) != '\n' && ch != EOF)
-                ;
+
+        sanitize(input);
+
+        char *p = input;
+        while (isspace((unsigned char)*p)) p++;
+
+        char *end;
+        long n = strtol(p, &end, 10);
+        while (isspace((unsigned char)*end)) end++;
+
+        if (p == end || *end || n < 0) {
+            printf("Enter a number\n");
             continue;
         }
-
-        if (num < 1 || num > total) {
+        if (n == 0)
+            break;
+        if ((size_t)n > count) {
             printf("Not this line\n");
             continue;
         }
-        fwrite(map + line_start[num - 1], 1, line_len[num - 1], stdout);
-        printf("\n");
+
+        printf("%.*s\n", (int)length[n - 1], data + offset[n - 1]);
     }
 
-    munmap(map, size);
-    close(file);
+    free(input);
+    free(offset);
+    free(length);
+    if (size > 0)
+        munmap(data, size);
+    close(fd);
     return 0;
 }

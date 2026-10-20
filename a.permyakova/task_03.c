@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
-void print_ids(void) {
+void print_ids() {
     printf("uid = %d, euid = %d\n", getuid(), geteuid());
 }
 
