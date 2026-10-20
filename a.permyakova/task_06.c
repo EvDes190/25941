@@ -75,6 +75,11 @@ int main() {
         total++;
     }
 
+    printf("Line table:\n");
+    for (int j = 0; j < total; j++) {
+        printf("line %d: offset=%ld length=%d\n", j + 1, (long)lines[j].start, lines[j].len);
+    }
+    
     struct sigaction act = {0};
     act.sa_handler = on_timer;
     sigaction(SIGALRM, &act, NULL);

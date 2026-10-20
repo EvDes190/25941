@@ -69,12 +69,17 @@ int main() {
             start = pos;
         }
     }
-    
+
     if (i < count) {
         offset[i] = start;
         length[i] = size - start;
     }
 
+    printf("Line table:\n");
+    for (int j = 0; j < count; j++) {
+        printf("line %d: offset=%ld length=%d\n", j + 1, (long)offset[j], length[j]);
+    }
+    
     char *input = NULL;
     size_t cap = 0;
 

@@ -93,6 +93,11 @@ int main(void) {
         start = i + 1;
     }
 
+    printf("Line table:\n");
+    for (size_t j = 0; j < count; j++) {
+        printf("line %zu: offset=%zu length=%zu\n", j + 1, offset[j], length[j]);
+    }
+
     struct sigaction act = {0};
     act.sa_handler = on_timer;
     sigaction(SIGALRM, &act, NULL);
