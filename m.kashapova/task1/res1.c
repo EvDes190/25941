@@ -70,11 +70,7 @@ int make_group_leader(void)
     return 1;
 }
 
-/*
- * Solaris не поддерживает RLIMIT_NPROC.
- * Максимальное число процессов пользователя (maxuprc) читается
- * через sysconf(_SC_CHILD_MAX) — то же, что показывает "ulimit -u".
- */
+
 int print_ulimit(void)
 {
     long max_proc;
@@ -93,11 +89,7 @@ int print_ulimit(void)
     return 1;
 }
 
-/*
- * На Solaris изменить лимит процессов пользователя из программы нельзя.
- * maxuprc задаётся в /etc/system и требует перезагрузки.
- * Поэтому -U сообщает об этом и завершается с ошибкой.
- */
+
 int change_ulimit(const char *str)
 {
     long value;
