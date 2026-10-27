@@ -29,14 +29,14 @@ int make_group_leader(void) {
 }
 
 int print_ulimit(void) {
-    long limit = ulimit(UL_GETFSIZE);
+    long limit = sysconf(_SC_CHILD_MAX);
 
     if (limit == -1) {
-        perror("ulimit");
+        perror("sysconf");
         return 1;
     }
 
-    printf("Ulimit: %ld\n", limit);
+    printf("Max user processes: %ld\n", limit);
 
     return 0;
 }
@@ -54,6 +54,8 @@ int set_ulimit(const char *text) {
         perror("ulimit");
         return 1;
     }
+
+    printf("File size limit set to %ld blocks\n", value);
 
     return 0;
 }
