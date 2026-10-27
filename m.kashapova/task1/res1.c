@@ -54,6 +54,7 @@ void print_process_ids(void)
     printf("PPID: %d\n", (int)getppid());
     printf("PGID: %d\n", (int)getpgrp());
 }
+
 int make_group_leader(void)
 {
     if (setpgid(0, 0) == -1)
@@ -68,32 +69,38 @@ int make_group_leader(void)
 
     return 1;
 }
+
+/*
+ * Solaris не поддерживает RLIMIT_NPROC.
+ * Максимальное число процессов пользователя (maxuprc) читается
+ * через sysconf(_SC_CHILD_MAX) — то же, что показывает "ulimit -u".
+ */
 int print_ulimit(void)
 {
-    struct rlimit limit;
+    long max_proc;
 
-    if (getrlimit(RLIMIT_FSIZE, &limit) == -1)
+    errno = 0;
+    max_proc = sysconf(_SC_CHILD_MAX);
+
+    if (max_proc == -1)
     {
-        perror("getrlimit");
+        perror("sysconf");
         return 0;
     }
 
-    if (limit.rlim_cur == RLIM_INFINITY)
-    {
-        printf("ulimit: unlimited\n");
-    }
-    else
-    {
-        printf("ulimit: %ld bytes\n", (long)limit.rlim_cur);
-    }
+    printf("ulimit: %ld\n", max_proc);
 
     return 1;
 }
 
+/*
+ * На Solaris изменить лимит процессов пользователя из программы нельзя.
+ * maxuprc задаётся в /etc/system и требует перезагрузки.
+ * Поэтому -U сообщает об этом и завершается с ошибкой.
+ */
 int change_ulimit(const char *str)
 {
     long value;
-    struct rlimit limit;
 
     if (!parse_number(str, &value))
     {
@@ -101,23 +108,13 @@ int change_ulimit(const char *str)
         return 0;
     }
 
-    if (getrlimit(RLIMIT_FSIZE, &limit) == -1)
-    {
-        perror("getrlimit");
-        return 0;
-    }
+    fprintf(stderr,
+            "Changing the maximum number of user processes is not "
+            "supported on Solaris from a program.\n"
+            "Edit /etc/system (set maxuprc=%ld) and reboot.\n",
+            value);
 
-    limit.rlim_cur = (rlim_t)value;
-
-    if (setrlimit(RLIMIT_FSIZE, &limit) == -1)
-    {
-        perror("setrlimit");
-        return 0;
-    }
-
-    printf("ulimit changed to %ld bytes\n", value);
-
-    return 1;
+    return 0;
 }
 
 int print_core_size(void)
@@ -131,18 +128,13 @@ int print_core_size(void)
     }
 
     if (limit.rlim_cur == RLIM_INFINITY)
-    {
         printf("Core file size: unlimited\n");
-    }
     else
-    {
-        printf("Core file size: %ld bytes\n",
-               (long)limit.rlim_cur);
-    }
+        printf("Core file size: %llu bytes\n",
+               (unsigned long long)limit.rlim_cur);
 
     return 1;
 }
-
 
 int change_core_size(const char *str)
 {
@@ -173,7 +165,6 @@ int change_core_size(const char *str)
 
     return 1;
 }
-
 
 int print_directory(void)
 {
@@ -233,7 +224,6 @@ int change_environment(const char *argument)
         return 0;
     }
 
-
     *equal = '\0';
 
     if (copy[0] == '\0')
@@ -244,7 +234,6 @@ int change_environment(const char *argument)
         return 0;
     }
 
-    
     if (setenv(copy, equal + 1, 1) == -1)
     {
         perror("setenv");
@@ -263,19 +252,22 @@ int change_environment(const char *argument)
 int main(int argc, char *argv[])
 {
     int opt;
-    if (argc == 1){
-   	 printf("Input command:\n"
-	"-i  Печатает реальные и эффективные идентификаторы пользователя и группы.\n"
-	"-s  Процесс становится лидером группы. Подсказка: смотри setpgid(2).\n"
-	"-p  Печатает идентификаторы процесса, процесса-родителя и группы процессов.\n"
-	"-u  Печатает значение ulimit\n"
-	"-Unew_ulimit  Изменяет значение ulimit. Подсказка: смотри atol(3C) на странице руководства strtol(3C)\n"
-	"-c  Печатает размер в байтах core-файла, который может быть создан.\n"
-	"-Csize  Изменяет размер core-файла\n"
-	"-d  Печатает текущую рабочую директорию\n"
-	"-v  Распечатывает переменные среды и их значения\n"
-	"-Vname=value  Вносит новую переменную в среду или изменяет значение существующей переменной.\n");
+
+    if (argc == 1)
+    {
+        printf("Input command:\n"
+               "-i  Печатает реальные и эффективные идентификаторы пользователя и группы.\n"
+               "-s  Процесс становится лидером группы. Подсказка: смотри setpgid(2).\n"
+               "-p  Печатает идентификаторы процесса, процесса-родителя и группы процессов.\n"
+               "-u  Печатает значение ulimit\n"
+               "-Unew_ulimit  Изменяет значение ulimit. Подсказка: смотри atol(3C) на странице руководства strtol(3C)\n"
+               "-c  Печатает размер в байтах core-файла, который может быть создан.\n"
+               "-Csize  Изменяет размер core-файла\n"
+               "-d  Печатает текущую рабочую директорию\n"
+               "-v  Распечатывает переменные среды и их значения\n"
+               "-Vname=value  Вносит новую переменную в среду или изменяет значение существующей переменной.\n");
     }
+
     while ((opt = getopt(argc, argv, "ispuU:cC:dvV:")) != -1)
     {
         switch (opt)
@@ -289,7 +281,6 @@ int main(int argc, char *argv[])
                 {
                     return 1;
                 }
-
                 break;
 
             case 'p':
@@ -301,33 +292,27 @@ int main(int argc, char *argv[])
                 {
                     return 1;
                 }
-
                 break;
 
-            // -Unew_ulimit
             case 'U':
                 if (!change_ulimit(optarg))
                 {
                     return 1;
                 }
-
                 break;
-                        
+
             case 'c':
                 if (!print_core_size())
                 {
                     return 1;
                 }
-
                 break;
 
-            //-Csize
             case 'C':
                 if (!change_core_size(optarg))
                 {
                     return 1;
                 }
-
                 break;
 
             case 'd':
@@ -335,30 +320,26 @@ int main(int argc, char *argv[])
                 {
                     return 1;
                 }
-
                 break;
 
             case 'v':
                 print_environment();
                 break;
 
-            //-Vname=value
             case 'V':
                 if (!change_environment(optarg))
                 {
                     return 1;
                 }
-
                 break;
 
             case '?':
             default:
-                fprintf(stderr, "Unknown or invalid option\n");
+                fprintf(stderr, "Unknown option\n");
                 return 1;
         }
     }
 
-  
     if (optind < argc)
     {
         fprintf(stderr, "Unexpected argument: %s\n", argv[optind]);
@@ -367,4 +348,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
