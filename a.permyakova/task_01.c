@@ -40,7 +40,7 @@ int main(int argc, char *argv[]) {
             getrlimit(RLIMIT_NPROC, &lim);
             printf("ulimit=%llu\n", (unsigned long long)lim.rlim_cur);
 #else
-            printf("ulimit=%ld\n", sysconf(_SC_CHILD_MAX));  /* макс. число процессов */
+            printf("ulimit=%ld\n", sysconf(_SC_CHILD_MAX));
 #endif
             break;
         // изменение

@@ -4,12 +4,6 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <unistd.h>
-#include <sys/types.h>
-
-struct line {
-    off_t start; // отступ
-    int len; //длина
-};
 
 static volatile sig_atomic_t expired = 0;
 
@@ -44,94 +38,145 @@ static void sanitize(char *s) {
     *w = '\0';
 }
 
-int main() {
-    struct line *lines = NULL;
-    int total = 0;
-    off_t begin = 0, pos;
-    char c;
-
-    int file = open("file.txt", O_RDONLY);
-    if (file == -1) {
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <filename>\n", argv[0]);
+        return 1;
+    }
+    int fd = open(argv[1], O_RDONLY);
+    
+    if (fd == -1) {
         perror("open");
         return 1;
     }
 
-    while (read(file, &c, 1) == 1) {
-        if (c == '\n') {
-            pos = lseek(file, 0L, SEEK_CUR);
-            lines = realloc(lines, (total + 1) * sizeof(struct line));
-            lines[total].start = begin;
-            lines[total].len = pos - begin - 1;
-            total++;
-            begin = pos;
+    int count = 0;
+    char ch;
+    off_t size = 0;
+    while (read(fd, &ch, 1) == 1) {
+        size++;
+        if (ch == '\n')
+            count++;
+    }
+    if (size > 0 && ch != '\n')
+        count++;
+
+    off_t *offset = malloc(count * sizeof(off_t) + 1);
+    int *length = malloc(count * sizeof(int) + 1);
+    if (offset == NULL || length == NULL) {
+        perror("malloc");
+        return 1;
+    }
+
+    lseek(fd, 0L, SEEK_SET);
+    off_t start = 0, pos;
+    int i = 0;
+    while (read(fd, &ch, 1) == 1) {
+        if (ch == '\n') {
+            pos = lseek(fd, 0L, SEEK_CUR);
+            offset[i] = start;
+            length[i] = pos - start - 1;
+            i++;
+            start = pos;
         }
     }
-    // таблица
-    pos = lseek(file, 0L, SEEK_CUR);
-    if (pos > begin) {
-        lines = realloc(lines, (total + 1) * sizeof(struct line));
-        lines[total].start = begin;
-        lines[total].len = pos - begin;
-        total++;
+
+    if (i < count) {
+        offset[i] = start;
+        length[i] = size - start;
     }
 
     printf("Line table:\n");
-    for (int j = 0; j < total; j++) {
-        printf("line %d: offset=%ld length=%d\n", j + 1, (long)lines[j].start, lines[j].len);
+    for (int j = 0; j < count; j++) {
+        printf("line %d: offset=%ld length=%d\n", j + 1, (long)offset[j], length[j]);
     }
-    
-    struct sigaction act = {0};
-    act.sa_handler = on_timer;
-    sigaction(SIGALRM, &act, NULL);
 
     char *input = NULL;
     size_t cap = 0;
 
+    struct sigaction act = {0};
+    act.sa_handler = on_timer;
+    sigaction(SIGALRM, &act, NULL);
+
+    printf("Enter line number (0 - exit): ");
+    fflush(stdout);
+
+    expired = 0;
+    alarm(5);
+    ssize_t res = getline(&input, &cap, stdin);
+    alarm(0);
+
+    if (expired) {
+        printf("\n");
+        lseek(fd, 0L, SEEK_SET);
+        while (read(fd, &ch, 1) == 1)
+            putchar(ch);
+        free(input);
+        free(offset);
+        free(length);
+        close(fd);
+        return 0;
+    }
+
+    if (res != -1) {
+        sanitize(input);
+
+        int n = atoi(input);
+        if (n == 0 && input[0] != '0') {
+            printf("Enter a number\n");
+        } else if (n == 0) {
+            free(input);
+            free(offset);
+            free(length);
+            close(fd);
+            return 0;
+        } else if (n < 1 || n > count) {
+            printf("Not this line\n");
+        } else {
+            char *buf = malloc(length[n - 1] + 1);
+            lseek(fd, offset[n - 1], SEEK_SET);
+            ssize_t got = read(fd, buf, length[n - 1]);
+            if (got < 0)
+                got = 0;
+            buf[got] = '\0';
+            printf("%s\n", buf);
+            free(buf);
+        }
+    }
+
     while (1) {
-        printf("Enter line number (5 sec, 0 - exit): ");
+        printf("Enter line number (0 - exit): ");
         fflush(stdout);
 
-        expired = 0;
-        alarm(5);
-        ssize_t res = getline(&input, &cap, stdin);
-        alarm(0);
-
-        if (expired) {
-            printf("\n");
-            lseek(file, 0L, SEEK_SET);
-            while (read(file, &c, 1) == 1)
-                putchar(c);
+        if (getline(&input, &cap, stdin) == -1)
             break;
-        }
-        if (res == -1)
-            break;
-
         sanitize(input);
-        int num = atoi(input);
 
-        if (num == 0 && input[0] != '0') {
+        int n = atoi(input);
+        if (n == 0 && input[0] != '0') {
             printf("Enter a number\n");
             continue;
         }
-        if (num == 0)
+        if (n == 0)
             break;
-        if (num < 1 || num > total) {
+        if (n < 1 || n > count) {
             printf("Not this line\n");
             continue;
         }
 
-        char *text = malloc(lines[num - 1].len + 1);
-        lseek(file, lines[num - 1].start, SEEK_SET);
-        ssize_t got = read(file, text, lines[num - 1].len);
+        char *buf = malloc(length[n - 1] + 1);
+        lseek(fd, offset[n - 1], SEEK_SET);
+        ssize_t got = read(fd, buf, length[n - 1]);
         if (got < 0)
             got = 0;
-        text[got] = '\0';
-        printf("%s\n", text);
-        free(text);
+        buf[got] = '\0';
+        printf("%s\n", buf);
+        free(buf);
     }
 
     free(input);
-    free(lines);
-    close(file);
+    free(offset);
+    free(length);
+    close(fd);
     return 0;
 }

@@ -2,7 +2,7 @@
 #include <time.h>
 #include <stdlib.h>
 
-int main(void) {
+int main() {
     time_t t = time(NULL) - 8 * 3600;
     struct tm *lt = gmtime(&t);
 

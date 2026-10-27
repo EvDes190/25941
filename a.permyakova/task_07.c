@@ -40,8 +40,13 @@ static void sanitize(char *s) {
     *w = '\0';
 }
 
-int main(void) {
-    int fd = open("file.txt", O_RDONLY);
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <filename>\n", argv[0]);
+        return 1;
+    }
+    int fd = open(argv[1], O_RDONLY);
+
     if (fd == -1) {
         perror("open");
         return 1;
@@ -54,7 +59,7 @@ int main(void) {
         return 1;
     }
 
-    size_t size = st.st_size;
+    size_t size = (size_t)st.st_size;
     char *data = NULL;
 
     if (size > 0) {
@@ -66,84 +71,115 @@ int main(void) {
         }
     }
 
-    // таблица 
-    size_t *offset = NULL, *length = NULL;
-    size_t count = 0, cap = 0, start = 0;
+    int count = 0;
+    size_t i;
+    for (i = 0; i < size; i++) {
+        if (data[i] == '\n')
+            count++;
+    }
+    if (size > 0 && data[size - 1] != '\n')
+        count++;
 
-    for (size_t i = 0; i <= size; i++) {
-        int end_of_line = (i < size && data[i] == '\n');
-        int end_of_file = (i == size && start < size);
+    off_t *offset = malloc(count * sizeof(off_t) + 1);
+    int *length = malloc(count * sizeof(int) + 1);
+    if (offset == NULL || length == NULL) {
+        perror("malloc");
+        if (size > 0)
+            munmap(data, size);
+        close(fd);
+        return 1;
+    }
 
-        if (!end_of_line && !end_of_file)
-            continue;
-
-        if (count == cap) {
-            cap = cap ? cap * 2 : 16;
-            size_t *o = realloc(offset, cap * sizeof(size_t));
-            size_t *l = realloc(length, cap * sizeof(size_t));
-            if (o) offset = o;
-            if (l) length = l;
-            if (o == NULL || l == NULL) {
-                perror("realloc");
-                return 1;
-            }
+    size_t start = 0;
+    int idx = 0;
+    for (i = 0; i < size; i++) {
+        if (data[i] == '\n') {
+            offset[idx] = (off_t)start;
+            length[idx] = (int)(i - start);
+            idx++;
+            start = i + 1;
         }
-        offset[count] = start;
-        length[count++] = i - start;
-        start = i + 1;
+    }
+    if (idx < count) {
+        offset[idx] = (off_t)start;
+        length[idx] = (int)(size - start);
     }
 
     printf("Line table:\n");
-    for (size_t j = 0; j < count; j++) {
-        printf("line %zu: offset=%zu length=%zu\n", j + 1, offset[j], length[j]);
+    for (int j = 0; j < count; j++) {
+        printf("line %d: offset=%ld length=%d\n", j + 1, (long)offset[j], length[j]);
     }
+
+    char *input = NULL;
+    size_t cap = 0;
 
     struct sigaction act = {0};
     act.sa_handler = on_timer;
     sigaction(SIGALRM, &act, NULL);
 
-    char *input = NULL;
-    size_t input_cap = 0;
+    printf("Enter line number (0 - exit): ");
+    fflush(stdout);
 
-    while (1) {
-        printf("Enter line number (5 sec, 0 - exit): ");
-        fflush(stdout);
+    expired = 0;
+    alarm(5);
+    ssize_t res = getline(&input, &cap, stdin);
+    alarm(0);
 
-        expired = 0;
-        alarm(5);
-        ssize_t res = getline(&input, &input_cap, stdin);
-        alarm(0);
+    if (expired) {
+        printf("\n");
+        if (size > 0)
+            fwrite(data, 1, size, stdout);
+        free(input);
+        free(offset);
+        free(length);
+        if (size > 0)
+            munmap(data, size);
+        close(fd);
+        return 0;
+    }
 
-        if (expired) {
-            printf("\n");
-            if (size > 0)
-                fwrite(data, 1, size, stdout);
-            break;
-        }
-        if (res == -1)
-            break;
-
+    if (res != -1) {
         sanitize(input);
 
-        char *p = input;
-        while (isspace((unsigned char)*p)) p++;
+        int n = atoi(input);
+        if (n == 0 && input[0] != '0') {
+            printf("Enter a number\n");
+        } else if (n == 0) {
+            free(input);
+            free(offset);
+            free(length);
+            if (size > 0)
+                munmap(data, size);
+            close(fd);
+            return 0;
+        } else if (n < 1 || n > count) {
+            printf("Not this line\n");
+        } else {
+            printf("%.*s\n", length[n - 1], data + offset[n - 1]);
+        }
+    }
 
-        char *end;
-        long n = strtol(p, &end, 10);
-        while (isspace((unsigned char)*end)) end++;
+    while (1) {
+        printf("Enter line number (0 - exit): ");
+        fflush(stdout);
 
-        if (p == end || *end || n < 0) {
+        if (getline(&input, &cap, stdin) == -1)
+            break;
+        sanitize(input);
+
+        int n = atoi(input);
+        if (n == 0 && input[0] != '0') {
             printf("Enter a number\n");
             continue;
         }
         if (n == 0)
             break;
-        if ((size_t)n > count) {
+        if (n < 1 || n > count) {
             printf("Not this line\n");
             continue;
         }
 
-        printf("%.*s\n", (int)length[n - 1], data + offset[n - 1]);
+        printf("%.*s\n", length[n - 1], data + offset[n - 1]);
     }
 
     free(input);
