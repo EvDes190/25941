@@ -1,0 +1,5 @@
+all:
+	gcc task5.c -o task5
+	gcc task6.c -o task6
+	gcc task7.c -o task7
+	./task5.o test.txt
