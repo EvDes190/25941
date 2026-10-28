@@ -8,14 +8,14 @@ int main() {
 	time_t now;
 	struct tm *sp;
 
-	(void) time( &now );
+	time(&now);
 	now -= 15 * 60 * 60;
-	printf("%s", ctime( &now ) );
+	printf("%s", ctime(&now));
 
 	sp = localtime(&now);
 	printf("%d/%d/%02d %d:%02d %s\n",
         sp->tm_mon + 1, sp->tm_mday,
-        sp->tm_year, sp->tm_hour,
-        sp->tm_min, "-7");
+        sp->tm_year + 1900, sp->tm_hour,
+        sp->tm_min, "-7 UTF");
 	exit(0);
 }
