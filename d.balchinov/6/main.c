@@ -75,6 +75,12 @@ lines_t * init_lines() {
     return lines;
 }
 
+void print_table(lines_t *lines) {
+    printf("     shift       size\n");
+    for (int i = 0; i < lines->size; i++)
+        printf("%10d %10d\n", lines->lines_data[i].shift, lines->lines_data[i].size);
+}
+
 void print_line(lines_t *lines, int num) {
     lseek(descript, lines->lines_data[num].shift, SEEK_SET);
     int size_read;
@@ -119,6 +125,9 @@ int main(int argc, char *argv[]) {
         printf("> ");
         scan_res = scanf("%d", &buf);
     }
+
+    if (buf == 0)
+        print_table(lines);
 
     if (scan_res == 0)
         puts("Not A Number!");
