@@ -1,0 +1,3 @@
+all:
+ gcc -Wall -Wextra -Wpedantic -g lab7.c -o lab7
+ ./lab7 

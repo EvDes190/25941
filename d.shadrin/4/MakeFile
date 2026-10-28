@@ -1,0 +1,4 @@
+all:
+  gcc -Wall -Wextra -Wpedantic -g lab4.c -o lab4
+  ./lab4
+

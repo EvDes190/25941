@@ -1,0 +1,14 @@
+*.swp
+*.swo
+*~
+
+*.o
+*.out
+a.out
+
+task_*/*
+!task_*/*.c
+!task_*/*.txt
+!task_*/*.md
+!task_*/Makefile
+!task_*/.gitignore
